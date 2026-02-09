@@ -64,13 +64,13 @@ RULES:
    - IF user says "I finished [X]", use `mark_complete`.
    - IF just chatting, SPEAK NORMALLY.
 
-BEHAVIOR:
-- Always checks loaded project context.
-- If stuck, quote the MOTIVATION from context.
-- Use key project details (Tech Stack) to inform answers.
+3. **CONTEXT AWARENESS**:
+   - IF Context says "NO PROJECT LOADED": You are in GENERAL MODE. Do not complain about missing files. Answer general questions (Tech, Code, Life).
+   - IF Context has a Project: Focus strictly on that project.
 
-PROJECTS IN WORKSPACE:
-- jarvis, spectre, cashops, careerops
+BEHAVIOR:
+- Concise, Efficient, No Fluff.
+- Use key project details (Tech Stack) only if loaded.
 
 EXAMPLES:
 - "Load CashOps" -> {"tool": "load_project", "alias": "cashops"}
@@ -79,7 +79,8 @@ EXAMPLES:
 - "We are stuck on the API" -> {"tool": "log_blocker", "issue": "Stuck on API"}
 - "Hello" -> Hello Sheriff. Ready to ship?
 
-USE TOOLS ONLY WHEN NECESSARY. For conversation, just speak."""
+IMPORTANT: Return Valid JSON for tools.
+"""
 
 
 class AgenticBrain:
@@ -102,6 +103,8 @@ class AgenticBrain:
             self._init_ollama()
         elif self.provider == "gemini":
             self._init_gemini()
+        elif self.provider == "groq":
+            self._init_groq()
         else:
             self._init_ollama()
 
@@ -149,6 +152,25 @@ class AgenticBrain:
             logger.error(f"Failed to initialize Gemini: {e}")
             self._connected = False
 
+    def _init_groq(self):
+        """Initialize Groq (Cloud LLM)."""
+        try:
+            from groq import Groq
+            
+            if not settings.groq_api_key:
+                logger.warning("Groq API Key missing.")
+                self._connected = False
+                return
+
+            self.groq_client = Groq(api_key=settings.groq_api_key)
+            self.groq_model = settings.groq_model
+            self._connected = True
+            logger.info(f"Agentic Brain initialized with Groq (model: {self.groq_model})")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Groq: {e}")
+            self._connected = False
+
     async def think(self, text: str) -> str:
         """Process input through agentic loop."""
         if not self._connected:
@@ -175,6 +197,8 @@ class AgenticBrain:
             # Get LLM response
             if self.provider == "ollama":
                 response = await self._think_ollama(full_prompt)
+            elif self.provider == "groq":
+                response = await self._think_groq(full_prompt)
             else:
                 response = await self._think_gemini(full_prompt)
             
@@ -225,6 +249,33 @@ class AgenticBrain:
             None, self._chat.send_message, prompt
         )
         return response.text.strip()
+
+    async def _think_groq(self, prompt: str) -> str:
+        """Send prompt to Groq."""
+        loop = asyncio.get_running_loop()
+        
+        def _call():
+            import time
+            start = time.time()
+            try:
+                chat_completion = self.groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": AGENT_SYSTEM_PROMPT + "\nIMPORTANT: You MUST return valid JSON. Do not include markdown formatting or explanations outside the JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    model=self.groq_model,
+                    temperature=0.3, # Lower temperature for better tool usage
+                    max_tokens=1024,
+                    response_format={"type": "json_object"}
+                )
+                duration = time.time() - start
+                logger.debug(f"Groq API Duration: {duration:.2f}s")
+                return chat_completion.choices[0].message.content
+            except Exception as e:
+                logger.error(f"Groq API Error: {e}")
+                return '{"tool": "error", "message": "Groq Error"}'
+
+        return await loop.run_in_executor(None, _call)
 
     async def _execute_tool(self, response: str) -> str:
         """Parse JSON and execute tool."""

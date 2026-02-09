@@ -8,6 +8,7 @@ import time
 import os
 import pygame
 import edge_tts
+import subprocess
 from pathlib import Path
 from src.core.config import settings
 from src.core.logger import get_logger
@@ -25,44 +26,46 @@ class TTSEngine:
         self.temp_dir.mkdir(exist_ok=True)
         
         self._is_speaking = False
-        self._interrupt_requested = False
-        self._file_counter = 0
+        self._process = None
         
-        # Initialize pygame mixer
-        try:
-            pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
-        except Exception:
-            pygame.mixer.init()
-        logger.info("TTS Engine initialized")
+        logger.info("TTS Engine initialized (MPV Mode)")
 
     @property
     def is_speaking(self) -> bool:
         return self._is_speaking
 
-    def interrupt(self):
-        """Request interruption of current speech."""
-        if self._is_speaking:
-            self._interrupt_requested = True
+    def stop(self):
+        """Immediately silence audio using taskkill."""
+        if self._process:
             try:
-                pygame.mixer.music.stop()
-                pygame.mixer.music.unload()
-            except Exception:
+                self._process.terminate()
+            except:
                 pass
-            logger.info("TTS interrupted")
+            self._process = None
+        
+        # Force kill any mpv instances
+        try:
+            os.system("taskkill /F /IM mpv.exe >nul 2>&1")
+        except:
+            pass
+            
+        self._is_speaking = False
+        logger.info("TTS Stopped (Barge-In sequence)")
 
     async def speak(self, text: str) -> None:
-        """Synthesize and speak text."""
+        """Synthesize and speak text using MPV."""
         if not text or len(text.strip()) < 2:
             return
 
-        self._interrupt_requested = False
-        self._is_speaking = True
+        # Stop previous
+        self.stop()
         
+        self._is_speaking = True
         logger.info(f"TTS: '{text[:50]}...'")
         
         try:
             # Generate unique filename
-            self._file_counter += 1
+            self._file_counter = getattr(self, "_file_counter", 0) + 1
             output_file = self.temp_dir / f"speech_{self._file_counter}.mp3"
             
             # Clean up old file if exists
@@ -70,60 +73,32 @@ class TTSEngine:
                 try:
                     output_file.unlink()
                 except Exception:
-                    output_file = self.temp_dir / f"speech_{int(time.time())}.mp3"
+                    pass
 
             # Generate audio using edge-tts
             communicate = edge_tts.Communicate(text, self.voice, rate=self.rate)
             await communicate.save(str(output_file))
             
-            # Wait for file to be written completely
-            await asyncio.sleep(0.1)
+            # Use MPV to play
+            # --no-terminal: quiet
+            self._process = subprocess.Popen(
+                ["mpv", "--no-terminal", "--volume=100", str(output_file)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
             
-            # Verify file exists and has content
-            if not output_file.exists() or output_file.stat().st_size < 100:
-                logger.error("TTS file generation failed")
-                return
-            
-            # Play audio
-            await self._play_audio(str(output_file))
-            
-            # Cleanup old files
-            self._cleanup()
+            # Wait for completion but allow interruption
+            while self._process and self._process.poll() is None:
+                await asyncio.sleep(0.1)
             
         except Exception as e:
             logger.error(f"TTS error: {e}")
         finally:
             self._is_speaking = False
-
-    async def _play_audio(self, file_path: str):
-        """Play audio file with interruption support."""
-        try:
-            pygame.mixer.music.load(file_path)
-            pygame.mixer.music.play()
-            
-            while pygame.mixer.music.get_busy():
-                if self._interrupt_requested:
-                    pygame.mixer.music.stop()
-                    break
-                await asyncio.sleep(0.05)
-            
-            pygame.mixer.music.unload()
-                
-        except Exception as e:
-            logger.error(f"Playback error: {e}")
+            self._process = None
 
     def _cleanup(self):
-        """Remove old audio files."""
-        try:
-            files = sorted(self.temp_dir.glob("speech_*.mp3"), key=lambda f: f.stat().st_mtime)
-            for f in files[:-3]:
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
+        pass # Minimal cleanup needed as we overwrite or use temp dir logic elsewhere
 
 # Singleton
 d_tts = TTSEngine()

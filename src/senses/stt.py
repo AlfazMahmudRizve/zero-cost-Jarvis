@@ -51,6 +51,9 @@ class STTEngine:
         if len(audio_data) == 0:
             return ""
 
+        if settings.stt_provider == "groq":
+            return await self._transcribe_groq(audio_data)
+
         # Run blocking model inference in a thread
         loop = asyncio.get_running_loop()
         text = await loop.run_in_executor(None, self._run_transcription, audio_data)
@@ -81,6 +84,52 @@ class STTEngine:
             logger.info(f"STT: '{text}' (Prob: {info.language_probability:.2f})")
         
         return text
+
+    async def _transcribe_groq(self, audio_data: np.ndarray) -> str:
+        """Transcribe using Groq Cloud API (Distil-Whisper)."""
+        import io
+        import wave
+        
+        # Convert float32 -> int16
+        audio_int16 = (audio_data * 32767).astype(np.int16)
+        
+        # Write to in-memory WAV
+        buffer = io.BytesIO()
+        with wave.open(buffer, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2) # 16-bit
+            wf.setframerate(settings.audio_sample_rate)
+            wf.writeframes(audio_int16.tobytes())
+            
+        buffer.name = "audio.wav"
+        buffer.seek(0)
+        
+        loop = asyncio.get_running_loop()
+        
+        def _call():
+            from groq import Groq
+            if not settings.groq_api_key:
+                logger.error("Groq API Key missing for STT")
+                return ""
+                
+            client = Groq(api_key=settings.groq_api_key)
+            
+            try:
+                transcription = client.audio.transcriptions.create(
+                    file=(buffer.name, buffer.read()),
+                    model="distil-whisper-large-v3-en",
+                    prompt="Jarvis, Sheriff, Service.", # Context hints
+                    response_format="json"
+                )
+                return transcription.text
+            except Exception as e:
+                logger.error(f"Groq STT Error: {e}")
+                return ""
+                
+        text = await loop.run_in_executor(None, _call)
+        if text:
+            logger.info(f"Groq STT: '{text}'")
+        return text.strip()
 
 
 # Singleton instance

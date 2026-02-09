@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     groq_api_key: Optional[str] = Field(default=None, description="Groq API Key (fallback)")
     
     llm_provider: Literal["gemini", "groq", "ollama"] = Field(
-        default="ollama", 
+        default="groq", 
         description="Primary LLM provider"
     )
     gemini_model: str = Field(
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     # SPEECH-TO-TEXT (STT) CONFIGURATION
     # ═══════════════════════════════════════════════════════════════
     stt_provider: Literal["local", "groq"] = Field(
-        default="local",
+        default="groq",
         description="STT provider: 'local' for faster-whisper, 'groq' for cloud"
     )
     whisper_model_size: Literal["tiny", "base", "small", "medium", "large-v2", "large-v3"] = Field(

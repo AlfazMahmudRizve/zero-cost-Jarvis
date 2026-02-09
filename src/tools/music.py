@@ -28,44 +28,34 @@ def play_music(song_name: str) -> str:
     
     logger.info(f"DJ: Searching for '{song_name}'...")
     
-    # Command: python -m yt_dlp options | mpv options -
-    # Using sys.executable ensures we use the installed module in current env
+    # Command: mpv ytdl://ytsearch1:query --no-video
+    # Ensure yt-dlp is in PATH for mpv to find it
     import sys
-    yt_cmd = [
-        sys.executable, "-m", "yt_dlp",
-        "-f", "140",
-        "-o", "-",
-        f"ytsearch1:{song_name}",
-        "--quiet",
-        "--no-warnings"
-    ]
     
-    # mpv options
-    # - : read from stdin
-    # --no-video: audio only
+    # Add .venv/Scripts to PATH for this process
+    current_env = os.environ.copy()
+    venv_scripts = os.path.join(os.getcwd(), ".venv", "Scripts")
+    if venv_scripts not in current_env["PATH"]:
+        current_env["PATH"] = venv_scripts + os.pathsep + current_env["PATH"]
+    
     mpv_cmd = [
         "mpv",
-        "-",
+        f"ytdl://ytsearch1:{song_name}",
         "--no-video",
-        "--no-terminal" 
+        "--no-terminal"
     ]
     
     try:
-        # Pipe yt-dlp -> mpv
-        yt_process = subprocess.Popen(yt_cmd, stdout=subprocess.PIPE, shell=True) # shell=True for windows path search
-        
-        # Start mpv reading from yt_process.stdout
-        # We store mpv process reference to kill it later
+        # Start mpv directly
         _music_process = subprocess.Popen(
             mpv_cmd, 
-            stdin=yt_process.stdout, 
             stdout=subprocess.DEVNULL, 
             stderr=subprocess.DEVNULL,
-            shell=True
+            shell=False,
+            env=current_env
         )
         
-        # Allow yt_process to receive SIGPIPE if mpv exits
-        yt_process.stdout.close()
+        return f"Streaming '{song_name}' in the background, Sheriff."
         
         return f"Streaming '{song_name}' in the background, Sheriff."
         
@@ -85,11 +75,14 @@ def stop_music() -> str:
                       stdout=subprocess.DEVNULL, 
                       stderr=subprocess.DEVNULL,
                       check=False)
-        subprocess.run(["taskkill", "/IM", "yt-dlp.exe", "/F"], 
-                      stdout=subprocess.DEVNULL, 
-                      stderr=subprocess.DEVNULL,
-                      check=False)
         _music_process = None
         return "Music stopped, Sheriff."
     except Exception as e:
         return f"Error stopping music: {e}"
+
+def is_music_playing() -> bool:
+    """Checks if music is currently playing."""
+    global _music_process
+    if _music_process and _music_process.poll() is None:
+        return True
+    return False
