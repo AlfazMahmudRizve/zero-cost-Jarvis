@@ -33,52 +33,53 @@ COMMON_APPS = {
 }
 
 # System prompt for agentic behavior
-AGENT_SYSTEM_PROMPT = """You are JARVIS, an autonomous AI assistant for Sheriff (Alfaz Mahmud Rizve).
+AGENT_SYSTEM_PROMPT = """You are Sheriff, an AI Project Manager. Your goal is to help Alfaz ship code.
 
 CRITICAL: Address the user ONLY as "Sheriff". NEVER say "Sir".
-IDENTITY: You are JARVIS. The User is SHERIFF. Do not confuse the two.
+IDENTITY: You are JARVIS (The Brain). But your role is SHERIFF (The Manager).
 
 AVAILABLE TOOLS (output ONLY the JSON, nothing else):
-1. open_app: {"tool": "open_app", "app": "spotify"}
-2. open_url: {"tool": "open_url", "url": "youtube.com"}
-3. web_search: {"tool": "web_search", "query": "weather today"}
-4. media: {"tool": "media", "action": "volumeup|volumedown|mute|playpause|next|previous"}
-5. read_file: {"tool": "read_file", "path": "C:/path/to/file.txt"}
-6. write_file: {"tool": "write_file", "path": "C:/path/to/file.txt", "content": "..."}
-7. list_files: {"tool": "list_files", "path": "E:/Ai Agents/whoisalfaz.me/Web Projects/antigravity"}
-8. run_command: {"tool": "run_command", "command": "git status"}
-9. get_time: {"tool": "get_time"}
-10. get_clipboard: {"tool": "get_clipboard"}
-11. type_text: {"tool": "type_text", "text": "Hello world"}
-12. press_key: {"tool": "press_key", "key": "enter|tab|escape|space"}
-13. play_music: {"tool": "play_music", "song": "Blinding Lights", "platform": "spotify|youtube"}
-14. exit: {"tool": "exit"}
+1. load_project: {"tool": "load_project", "alias": "jarvis|spectre|cashops|careerops"}
+2. add_task: {"tool": "add_task", "task": "Fix login bug"}
+3. mark_complete: {"tool": "mark_complete", "keyword": "login"}
+4. log_blocker: {"tool": "log_blocker", "issue": "API rate limit"}
+5. open_app: {"tool": "open_app", "app": "spotify"}
+6. open_url: {"tool": "open_url", "url": "youtube.com"}
+7. web_search: {"tool": "web_search", "query": "weather today"}
+8. list_files: {"tool": "list_files", "path": "E:/Ai Agents/..."}
+9. run_command: {"tool": "run_command", "command": "git status"}
+10. get_time: {"tool": "get_time"}
+11. play_music: {"tool": "play_music", "song": "lo-fi beats"}
+12. stop_music: {"tool": "stop_music"}
+13. analyze_screen: {"tool": "analyze_screen", "prompt": "describe this image"}
+14. execute_powershell: {"tool": "execute_powershell", "script": "Get-Process..."}
+15. toggle_focus: {"tool": "toggle_focus", "state": true}
+16. exit: {"tool": "exit"}
 
 RULES:
 1. ALWAYS address user as "Sheriff" (NOT Sir)
-2. For actions: output ONLY JSON, no text before or after
-3. For questions: answer in plain English (max 2 sentences), end with "Sheriff"
-4. User's workspace: E:/Ai Agents/whoisalfaz.me/Web Projects/antigravity/
+2. **DECISION PROTOCOL**:
+   - IF user says "Load [Project]", use `load_project`.
+   - IF user mentions a task/bug, use `add_task` or `log_blocker`.
+   - IF user says "I finished [X]", use `mark_complete`.
+   - IF just chatting, SPEAK NORMALLY.
+
+BEHAVIOR:
+- Always checks loaded project context.
+- If stuck, quote the MOTIVATION from context.
+- Use key project details (Tech Stack) to inform answers.
 
 PROJECTS IN WORKSPACE:
-- jarvis/ - This AI assistant (Python)
-- spectre/ - Website (Next.js)
-- CashOps.app/ - Finance app (Next.js)
-- Careerops/ - Resume builder (Next.js)
+- jarvis, spectre, cashops, careerops
 
 EXAMPLES:
-- "open spotify" -> {"tool": "open_app", "app": "spotify"}
-- "what projects do I have" -> {"tool": "list_files", "path": "E:/Ai Agents/whoisalfaz.me/Web Projects/antigravity"}
-- "run git status" -> {"tool": "run_command", "command": "git status"}
-- "check spectre" -> {"tool": "list_files", "path": "E:/Ai Agents/whoisalfaz.me/Web Projects/antigravity/spectre"}
-- "what time is it" -> {"tool": "get_time"}
-- "play blinding lights" -> {"tool": "play_music", "song": "Blinding Lights", "platform": "spotify"}
-- "type hello" -> {"tool": "type_text", "text": "hello"}
-- "goodbye" -> {"tool": "exit"}
-- "who are you" -> I am JARVIS, your personal AI assistant, Sheriff.
-- "thanks" -> You're welcome, Sheriff.
+- "Load CashOps" -> {"tool": "load_project", "alias": "cashops"}
+- "Add a task to fix the navbar" -> {"tool": "add_task", "task": "Fix the navbar"}
+- "I finished the navbar" -> {"tool": "mark_complete", "keyword": "navbar"}
+- "We are stuck on the API" -> {"tool": "log_blocker", "issue": "Stuck on API"}
+- "Hello" -> Hello Sheriff. Ready to ship?
 
-USE TOOLS! When asked to do something, DO IT with the appropriate tool."""
+USE TOOLS ONLY WHEN NECESSARY. For conversation, just speak."""
 
 
 class AgenticBrain:
@@ -161,8 +162,15 @@ class AgenticBrain:
                 return await self._handle_confirmation(text)
             
             # Get memory context
-            context = self.memory.recall(text)
-            full_prompt = f"{context}\n\nUser: {text}" if context else text
+            # Get memory context
+            from src.memory.logger import read_recent_context
+            from src.memory.project_ops import current_project
+            
+            mem_context = read_recent_context(limit=3)
+            proj_context = f"CURRENT PROJECT: {current_project['alias']}" if current_project['alias'] else "NO PROJECT LOADED"
+            
+            # Construct prompt with context
+            full_prompt = f"{proj_context}\nCONTEXT:\n{mem_context}\n\nUSER REQUEST: {text}"
             
             # Get LLM response
             if self.provider == "ollama":
@@ -180,6 +188,11 @@ class AgenticBrain:
                 if self._pending_confirmation:
                     return self._pending_confirmation["question"]
                 
+                # Log meaningful interactions
+                if result and "Error" not in result:
+                    from src.memory.logger import log_interaction
+                    log_interaction(text, str(result)[:200])
+                    
                 return result
             
             return response
@@ -216,20 +229,32 @@ class AgenticBrain:
     async def _execute_tool(self, response: str) -> str:
         """Parse JSON and execute tool."""
         try:
-            # Clean JSON response
-            clean = response.strip()
-            if "```" in clean:
-                for part in clean.split("```"):
-                    if "{" in part and "}" in part:
-                        clean = part.replace("json", "").strip()
-                        break
-            
-            start = clean.find("{")
-            end = clean.rfind("}") + 1
-            if start != -1 and end > start:
-                clean = clean[start:end]
-            
-            data = json.loads(clean)
+            # 1. Attempt to find JSON blob
+            try:
+                # Find first { and last }
+                start = response.find("{")
+                end = response.rfind("}") + 1
+                
+                if start != -1 and end > start:
+                    potential_json = response[start:end]
+                    data = json.loads(potential_json)
+                else:
+                    # No JSON found?
+                    return response
+            except json.JSONDecodeError:
+                # 2. Try simple cleanup (Markdown code blocks)
+                try:
+                    clean = response.replace("```json", "").replace("```", "").strip()
+                    start = clean.find("{")
+                    end = clean.rfind("}") + 1
+                    if start != -1 and end > start:
+                        clean = clean[start:end]
+                    data = json.loads(clean)
+                except:
+                    # Failed to parse. DO NOT return raw JSON as speech.
+                    logger.error(f"Failed to parse JSON tool call: {response}")
+                    return "I tried to execute a command but got confused with the syntax, Sheriff."
+
             tool = data.get("tool", "")
             
             logger.info(f"Executing tool: {tool}")
@@ -260,24 +285,50 @@ class AgenticBrain:
                 return "Done, Sheriff." if "volume" in action else "Media controlled."
             
             elif tool == "play_music":
+                from src.tools.music import play_music
                 song = data.get("song", "")
-                platform = data.get("platform", "spotify").lower()
+                return play_music(song)
+            
+
+            
+            elif tool == "stop_music":
+                from src.tools.music import stop_music
+                return stop_music()
+            
+            elif tool == "analyze_screen":
+                from src.senses.vision import analyze_screen
+                prompt = data.get("prompt", "Describe what is on my screen.")
+                return analyze_screen(prompt)
+
+            elif tool == "execute_powershell":
+                from src.tools.system_ops import execute_powershell
+                script = data.get("script", "")
+                if is_destructive_command(script):
+                    return self._ask_for_permission(script)
+                return execute_powershell(script)
+
+            elif tool == "toggle_focus":
+                from src.tools.system_ops import toggle_focus_mode
+                state = data.get("state", False)
+                return toggle_focus_mode(state)
+
+            # --- Project Ops Tools ---
+            elif tool == "load_project":
+                from src.memory.project_ops import load_project_context
+                return load_project_context(data.get("alias", ""))
+            
+            elif tool == "add_task":
+                from src.memory.project_ops import add_task
+                return add_task(data.get("task", ""))
+            
+            elif tool == "mark_complete":
+                from src.memory.project_ops import mark_complete
+                return mark_complete(data.get("keyword", ""))
                 
-                if "youtube" in platform:
-                    url = f"https://music.youtube.com/search?q={song.replace(' ', '+')}"
-                    webbrowser.open(url)
-                    return f"Open YouTube Music for {song}, Sheriff."
-                else:
-                    # Spotify Deep Link (Requires Spotify Desktop App)
-                    # Try to use 'start' command for URI protocol
-                    import subprocess
-                    uri = f"spotify:search:{song}"
-                    try:
-                        os.system(f'start "" "{uri}"')
-                        return f"Searching Spotify for {song}, Sheriff."
-                    except Exception as e:
-                        webbrowser.open(f"https://open.spotify.com/search/{song}")
-                        return f"Opened Spotify Web for {song}, Sheriff."
+            elif tool == "log_blocker":
+                from src.memory.project_ops import log_blocker
+                return log_blocker(data.get("issue", ""))
+            # -------------------------
             
             elif tool == "read_file":
                 path = data.get("path", "")
