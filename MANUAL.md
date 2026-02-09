@@ -16,7 +16,8 @@ This system is a **Local Command & Control Engine** designed for privacy, speed,
 *   **Body**: `pyautogui` & `subprocess` for full system control
 
 ### ⚡ Key Capabilities
--   **Wake Word Variants**: Responds to "Sheriff", "Jarvis", "Service", "Harvest" (mishearing tolerant).
+-   **Wake Word Variants**: Responds to "Jarvis", "Service", "Harvest" (mishearing tolerant).
+-   **Identity**: Agent is **JARVIS**. User is **SHERIFF**.
 -   **Noise Filtering**: Ignores short sounds (<2 chars) and requires 1s silence to activate.
 -   **Deep App Integration**: Launches Spotify/YouTube Music to specific songs via deep links.
 -   **System Control**: Clipboard access, typing, key presses, file management.

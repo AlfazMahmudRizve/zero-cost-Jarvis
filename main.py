@@ -120,8 +120,7 @@ async def main_loop() -> None:
             # Fuzzy Wake Word Detection (Whisper often mishears "Jarvis")
             wake_word_variants = [
                 "jarvis", "darius", "jervis", "jarv", "jaravis", "jarvi", 
-                "service", "harvest", "travis", "davis", "chavis", 
-                "sheriff", "sherif", "shareef", "chief"
+                "service", "harvest", "travis", "davis", "chavis"
             ]
             wake_detected = any(variant in text_lower for variant in wake_word_variants)
             
