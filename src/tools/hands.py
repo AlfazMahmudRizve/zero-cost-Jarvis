@@ -13,7 +13,7 @@ from src.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Common apps and their Windows process names
+# Common apps - Use URI protocols for Windows Store apps
 COMMON_APPS = {
     # Browsers
     "chrome": "chrome", "google chrome": "chrome",
@@ -30,13 +30,25 @@ COMMON_APPS = {
     "explorer": "explorer", "file explorer": "explorer",
     "task manager": "taskmgr", "control panel": "control",
     "calculator": "calc", "paint": "mspaint",
-    # Media
-    "spotify": "spotify", "vlc": "vlc",
     # Communication
     "discord": "discord", "slack": "slack", "teams": "msteams",
-    "zoom": "zoom", "telegram": "telegram", "whatsapp": "whatsapp",
+    "zoom": "zoom", "telegram": "telegram",
     # Other
     "steam": "steam", "obs": "obs64",
+}
+
+# Windows Store apps use URI protocols
+URI_APPS = {
+    "spotify": "spotify:",
+    "whatsapp": "whatsapp:",
+    "netflix": "netflix:",
+    "vlc": "vlc:",
+    "settings": "ms-settings:",
+    "store": "ms-windows-store:",
+    "mail": "mailto:",
+    "calendar": "outlookcal:",
+    "photos": "ms-photos:",
+    "camera": "microsoft.windows.camera:",
 }
 
 
@@ -124,49 +136,48 @@ class Hands:
         return "Media action failed."
 
     def _system(self, action: str, value: str) -> str:
-        """System commands."""
+        """System commands - RESTRICTED for safety."""
         value_lower = value.lower()
         
-        if value_lower == "lock":
-            os.system("rundll32.exe user32.dll,LockWorkStation")
-            return "Locking workstation."
-        elif value_lower == "sleep":
-            os.system("rundll32.exe powrprof.dll,SetSuspendState 0,1,0")
-            return "Putting PC to sleep."
-        elif value_lower in ["exit", "quit", "shutdown", "goodbye", "stop"]:
+        # Only allow Jarvis to shut itself off
+        if value_lower in ["exit", "quit", "shutdown", "goodbye", "stop", "bye"]:
             import sys
-            print("\n🤖 JARVIS: Goodbye, Sir.")
+            print("\n🤖 JARVIS: Goodbye, Sheriff.")
             sys.exit(0)
-        return "System command executed."
+        
+        # Block all other system commands for safety
+        return "I cannot perform system control actions, Sheriff."
 
     def _app(self, action: str, value: str) -> str:
-        """Launch apps using PowerShell (most reliable on Windows)."""
+        """Launch apps - supports both regular apps and Windows Store apps."""
         if action in ["open", "launch", "start"]:
             app_name = value.lower().strip()
             display_name = value.capitalize()
             
-            # Method 1: Direct PowerShell Start-Process (most reliable)
-            try:
-                # Check if it's a known app
-                if app_name in COMMON_APPS:
-                    exe = COMMON_APPS[app_name]
-                    # Use PowerShell Start-Process which searches PATH and Start Menu
+            # Method 1: Check URI protocols for Windows Store apps (Spotify, etc.)
+            if app_name in URI_APPS:
+                uri = URI_APPS[app_name]
+                try:
+                    cmd = f'powershell -Command "Start-Process \'{uri}\'"'
+                    subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    return f"Opening {display_name}."
+                except Exception as e:
+                    logger.error(f"URI launch failed: {e}")
+            
+            # Method 2: Check regular apps
+            if app_name in COMMON_APPS:
+                exe = COMMON_APPS[app_name]
+                try:
                     cmd = f'powershell -Command "Start-Process \'{exe}\' -ErrorAction SilentlyContinue"'
                     subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     return f"Opening {display_name}."
-                
-                # Method 2: Windows Run dialog (works for most apps)
+                except Exception as e:
+                    logger.error(f"App launch failed: {e}")
+            
+            # Method 3: Try direct name
+            try:
                 cmd = f'powershell -Command "Start-Process \'{app_name}\' -ErrorAction SilentlyContinue"'
                 subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                return f"Opening {display_name}."
-                
-            except Exception as e:
-                logger.error(f"PowerShell launch failed: {e}")
-            
-            # Method 3: Fallback to shell:AppsFolder for modern apps
-            try:
-                # This opens the app via Windows shell
-                subprocess.Popen(f'explorer shell:AppsFolder\\{app_name}', shell=True)
                 return f"Opening {display_name}."
             except Exception:
                 pass

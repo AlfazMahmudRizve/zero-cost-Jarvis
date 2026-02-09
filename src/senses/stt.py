@@ -63,14 +63,20 @@ class STTEngine:
         # English-only mode for better accuracy and speed
         segments, info = model.transcribe(
             audio_data,
-            language="en",  # Force English only
+            language="en",
             beam_size=5,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
+            vad_parameters=dict(min_silence_duration_ms=1000, speech_pad_ms=400),
+            initial_prompt="Jarvis, service, sheriff, harvest.",  # Helps prime for wake words
+            condition_on_previous_text=False,  # Prevents hallway-cates from previous audio
         )
         
         text = " ".join([segment.text for segment in segments])
         
+        # Filter out short noise/hallucinations
+        if len(text.strip()) < 2:
+            return ""
+
         if text:
             logger.info(f"STT: '{text}' (Prob: {info.language_probability:.2f})")
         

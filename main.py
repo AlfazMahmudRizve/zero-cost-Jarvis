@@ -74,14 +74,14 @@ async def main_loop() -> None:
     Main orchestration loop:
     Listen -> Wake Word -> Recall -> Think -> Act -> Speak -> Memorize
     """
-    jarvis_speak("Systems successfully integrated. I am ready, Sir.")
+    jarvis_speak("Ready for your command, Sheriff.")
     
     wake_word = settings.wake_word.lower()
     
     # Conversation State
     in_conversation = False
     last_interaction_time = 0
-    conversation_timeout = 10.0  # Seconds to listen without wake word
+    conversation_timeout = 20.0  # Detailed commands take longer
     
     while True:
         try:
@@ -118,7 +118,11 @@ async def main_loop() -> None:
             command = ""
             
             # Fuzzy Wake Word Detection (Whisper often mishears "Jarvis")
-            wake_word_variants = ["jarvis", "darius", "jervis", "jarv", "jaravis", "jarvi"]
+            wake_word_variants = [
+                "jarvis", "darius", "jervis", "jarv", "jaravis", "jarvi", 
+                "service", "harvest", "travis", "davis", "chavis", 
+                "sheriff", "sherif", "shareef", "chief"
+            ]
             wake_detected = any(variant in text_lower for variant in wake_word_variants)
             
             # Case A: Explicit Wake Word
@@ -126,7 +130,7 @@ async def main_loop() -> None:
                 logger.info(f"Wake word detected in: '{text}'")
                 
                 # Speak Acknowledgment
-                await d_tts.speak("Yes, Sir?")
+                # No verbal acknowledgment - just listen for command
                 
                 # Extract Command (find which variant was used)
                 for variant in wake_word_variants:
@@ -169,74 +173,24 @@ async def main_loop() -> None:
 
 async def process_interaction(user_input: str) -> None:
     """
-    Process a specific user command through the full pipeline.
+    Process user command through the agentic brain.
+    The brain handles all tool execution via function calling.
     """
     logger.info(f"Processing: {user_input}")
 
     # ─────────────────────────────────────────────────────────────
-    # 4. THINK (BRAIN + MEMORY)
+    # AGENTIC BRAIN (Handles thinking + tool execution)
     # ─────────────────────────────────────────────────────────────
+    console.print("[bold blue]🧠 Processing...[/bold blue]")
     response = await d_brain.think(user_input)
     
-    # ─────────────────────────────────────────────────────────────
-    # 5. ANALYZE RESPONSE (TEXT vs ACTION)
-    # ─────────────────────────────────────────────────────────────
-    clean_response = response.strip()
+    # Log and speak the response
+    jarvis_speak(f"Reply: {response}")
     
-    # Check for JSON Action
-    is_action = clean_response.startswith("{") or "\"tool\":" in clean_response
-    
-    if is_action:
-        # ─────────────────────────────────────────────────────────────
-        # 6. ACT (HANDS) - Execute and speak natural confirmation
-        # ─────────────────────────────────────────────────────────────
-        console.print("[bold blue]⚡ Executing...[/bold blue]")
-        action_result = await d_hands.execute_action(clean_response)
-        
-        # Speak the natural result (e.g., "Opening Spotify")
-        await d_tts.speak(action_result)
-        
-        # Log to console
-        jarvis_speak(f"Action: {action_result}")
-        d_hippocampus.memorize(f"Executed: {action_result}", "system")
-    else:
-        # ─────────────────────────────────────────────────────────────
-        # 7. SPEAK (CONVERSATION) - Full spoken response
-        # ─────────────────────────────────────────────────────────────
-        jarvis_speak(f"Reply: {clean_response}")
-        
-        # Speak with interruption support
-        async def speak_with_interruption():
-            speak_task = asyncio.create_task(d_tts.speak(clean_response))
-            was_interrupted = False
-            
-            await asyncio.sleep(0.5)
-            
-            while d_tts.is_speaking:
-                try:
-                    audio_chunk = await asyncio.wait_for(
-                        d_mic._queue.get(), timeout=0.1
-                    )
-                    import numpy as np
-                    rms = np.sqrt(np.mean(audio_chunk**2))
-                    
-                    if rms > 0.03:
-                        d_tts.interrupt()
-                        was_interrupted = True
-                        console.print("[bold yellow]⏹️ Interrupted![/bold yellow]")
-                        break
-                except asyncio.TimeoutError:
-                    pass
-                
-                await asyncio.sleep(0.05)
-            
-            await speak_task
-            
-            if was_interrupted:
-                d_mic.clear_queue()
-                await asyncio.sleep(0.3)
-        
-        await speak_with_interruption()
+    # Speak with interruption support
+    # Speak (Blocking, no interruption)
+    await d_tts.speak(response)
+    d_hippocampus.memorize(f"User: {user_input} | JARVIS: {response[:100]}", "interaction")
 
 
 def handle_shutdown(signum: int, frame) -> None:
@@ -275,7 +229,7 @@ def main() -> None:
         logger.exception("Fatal error in main loop")
         sys.exit(1)
     finally:
-        jarvis_speak("Goodbye, Sir.")
+        jarvis_speak("Goodbye, Sheriff.")
 
 
 if __name__ == "__main__":

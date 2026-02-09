@@ -53,7 +53,7 @@ class Listener:
                     logger.info(f"Wake word detected: '{text}'")
                     
                     # Visual/Audio acknowledgement
-                    jarvis_speak("Yes, Sir?")
+                    # No verbal acknowledgment - handled in main.py
                     # await d_tts.speak("Yes?")
                     
                     # Extract command if present in the same phrase

@@ -1,8 +1,8 @@
 """
-Brain Module - LLM Integration
+Brain Module - Agentic LLM Integration
 """
 
-from .llm import d_brain, Brain
+from .llm import d_brain, AgenticBrain
 from .prompts import SHERIFF_SYSTEM_PROMPT
 
-__all__ = ["d_brain", "Brain", "SHERIFF_SYSTEM_PROMPT"]
+__all__ = ["d_brain", "AgenticBrain", "SHERIFF_SYSTEM_PROMPT"]
