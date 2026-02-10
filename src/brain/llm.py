@@ -55,6 +55,9 @@ AVAILABLE TOOLS (output ONLY the JSON, nothing else):
 14. execute_powershell: {"tool": "execute_powershell", "script": "Get-Process..."}
 15. toggle_focus: {"tool": "toggle_focus", "state": true}
 16. exit: {"tool": "exit"}
+17. log_entry: {"tool": "log_entry", "entry": "message"}
+18. ui_click: {"tool": "ui_click", "app": "Spotify", "target": "Play"}
+19. ui_scan: {"tool": "ui_scan", "app": "Calculator"}
 
 RULES:
 1. ALWAYS address user as "Sheriff" (NOT Sir)
@@ -62,6 +65,8 @@ RULES:
    - IF user says "Load [Project]", use `load_project`.
    - IF user mentions a task/bug, use `add_task` or `log_blocker`.
    - IF user says "I finished [X]", use `mark_complete`.
+   - IF user says "I finished [X]", use `mark_complete`.
+   - IF user says "Log: [X]" or "Note: [X]", use `log_entry`.
    - IF just chatting, SPEAK NORMALLY.
 
 3. **CONTEXT AWARENESS**:
@@ -379,6 +384,18 @@ class AgenticBrain:
             elif tool == "log_blocker":
                 from src.memory.project_ops import log_blocker
                 return log_blocker(data.get("issue", ""))
+            
+            elif tool == "log_entry":
+                from src.memory.journal import log
+                return log("USER", data.get("entry", ""))
+                
+            elif tool == "ui_click":
+                from src.tools.ui_ops import ui_click
+                return ui_click(data.get("app", ""), data.get("target", ""))
+            
+            elif tool == "ui_scan":
+                from src.tools.ui_ops import ui_scan
+                return ui_scan(data.get("app", ""))
             # -------------------------
             
             elif tool == "read_file":

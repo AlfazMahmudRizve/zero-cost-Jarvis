@@ -250,6 +250,12 @@ def main() -> None:
     
     success_message("Starting Core Systems...")
     
+    success_message("Starting Core Systems...")
+    
+    # Initialize Journal
+    from src.memory.journal import log
+    log("SYSTEM", "Sheriff v5.0 (Architect) Online")
+    
     # Initialize Worker
     worker = JarvisWorker()
     
